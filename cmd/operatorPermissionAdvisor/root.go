@@ -27,7 +27,7 @@ var configFile string
 var commands []*cobra.Command = []*cobra.Command{}
 
 var rootCmd = &cobra.Command{
-	Use:   "opa",
+	Use:   "operator-permission-advisor",
 	Short: "Operator Permissions Advisor",
 	Long:  "Operator Permissions Advisor is a CLI for getting an early preview look for the permissions an Operator channel will need for an install of the controller through an OLM install",
 }
