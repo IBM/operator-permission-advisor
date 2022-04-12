@@ -23,7 +23,7 @@ limitations under the License.
 
 package main
 
-import "github.com/IBM/operator-permission-advisor/cmd/opa"
+import "github.com/IBM/operator-permission-advisor/cmd/operatorPermissionAdvisor"
 
 func main() {
 	cmd.Execute()

@@ -1,4 +1,4 @@
-# opa
+# Operator Permission Advisor
 Operator Permissions Advisor is a CLI tool that will take a catalog image and statically parse it to determine what permissions an Operator will request of OLM during an install.  The permissions are aggregated from the following sources:
 
 1. The CSV
@@ -9,11 +9,11 @@ This tool uses the standardized operator-registry `actions` library github.com/o
 ## Usage
 
 ```
-./opa static --help
+./operator-permission-advisor static --help
 Statically check the catalog for permission information
 
 Usage:
-  opa static [flags]
+  operator-permission-advisor static [flags]
 
 Flags:
   -c, --catalog string       catalog source image repo
