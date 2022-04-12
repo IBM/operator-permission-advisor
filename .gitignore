@@ -1,0 +1,5 @@
+*.gz
+*.tar
+*.tgz
+*.DS_Store
+bin/*
