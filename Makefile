@@ -3,7 +3,7 @@ GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
 GOPATH?=$(go env GOPATH)
 
 
-BINARY=opa
+BINARY=operator-permission-advisor
 
 .PHONY: vet
 vet:
