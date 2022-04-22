@@ -13,10 +13,6 @@ vet:
 fmt:
 	gofmt -w $(GOFMT_FILES)
 
-.PHONY: test
-test:
-	go test -v ./...
-
 .PHONY: generate
 generate:
 	go generate
@@ -28,3 +24,12 @@ install: generate vet
 .PHONY: build
 build: generate fmt vet
 	CGO_ENABLED=1 go build -o "./bin/$(BINARY)" -tags "json1"
+
+.PHONY: test
+test: generate fmt vet
+	cd pkg && go test ./...
+
+.PHONY: release
+release: test build
+	tar -czf $(BINARY).tar.gz "./bin/$(BINARY)"
+	shasum -a 256 $(BINARY).tar.gz > checksum.sha56

@@ -1,4 +1,7 @@
 # Operator Permission Advisor
+
+[![Go Report](https://goreportcard.com/badge/github.com/nathanbrophy/operator-permission-advisor)](https://goreportcard.com/report/github.com/IBM/operator-permission-advisor)
+
 Operator Permissions Advisor is a CLI tool that will take a catalog image and statically parse it to determine what permissions an Operator will request of OLM during an install.  The permissions are aggregated from the following sources:
 
 1. The CSV

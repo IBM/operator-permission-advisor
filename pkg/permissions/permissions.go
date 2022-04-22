@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"github.com/operator-framework/api/pkg/operators/v1alpha1"
 	"github.com/operator-framework/operator-registry/alpha/action"
 	"github.com/operator-framework/operator-registry/alpha/model"
@@ -50,6 +51,12 @@ type PermissionAdvisorStruct struct {
 	OperatorPackage string
 	// The channel in the Operator package to inspect
 	Channel string
+
+	// Aggreagate is a flag to deteremine if we should get the permissions of
+	// all bundles in a channel of just the head
+	// When false, this means to just get the heads of channels permission info
+	// when true, this means to aggregate permmissions across all bundles in the channel
+	Aggregate bool
 }
 
 type PermissionAdvisor interface {
@@ -104,10 +111,94 @@ func (p *PermissionWrapper) Hash() string {
 	preHash += strings.Join(apiGroupsCopy, "") + "-"
 	preHash += strings.Join(resourcesCopy, "") + "-"
 	preHash += strings.Join(resourceNamesCopy, "") + "-"
-	preHash += strings.Join(nonResourceURLSCopy, "") + "-"
+	preHash += strings.Join(nonResourceURLSCopy, "")
 	h := sha256.New()
 	h.Write([]byte(preHash))
 	return string(h.Sum(nil))
+}
+
+// GetBundlesFromChannel will return an array of all bundles in the channel
+// channel (*model.Channel): is the channel object request to get the bundles from
+// returns ([]model.Bundle): an array of all bundles in the channel unless p.Aggregate is false,
+//                           then will only return the bundle at the head of the channel
+func (p *PermissionAdvisorStruct) GetBundlesFromChannel(channel *model.Channel) []model.Bundle {
+	var bundles []model.Bundle
+	if p == nil || channel == nil {
+		return bundles
+	}
+
+	if !p.Aggregate {
+		head, err := channel.Head()
+		if err != nil {
+			panic(err)
+		}
+		bundles = []model.Bundle{*head}
+	} else {
+		for _, bundle := range channel.Bundles {
+			bundles = append(bundles, *bundle)
+		}
+	}
+
+	return bundles
+}
+
+// GetChannelsForPackage will get all channels for a given pacakge in the listed package output
+// packages ([]model.Package): is the list of all packages in the catalog index ref
+//                             this is filtered based on the p.OperatorPackage field
+// returns (map[string]*model.Channel): A map consisting of all channels by name for the filtered package
+func (p *PermissionAdvisorStruct) GetChannelsForPackage(packages []model.Package) map[string]*model.Channel {
+	// add a nil guard to the return here by initializing a memory address
+	// for the map before returning it, even in a no-op case
+	var channels map[string]*model.Channel = make(map[string]*model.Channel)
+	if p == nil {
+		return channels
+	}
+
+	// TODO: since the packages are in sorted array order by name, this can be
+	//       optimized to use a binary search instead of brute force linear search
+	//       I am using today to prove out the functionality.
+	for _, packageName := range packages {
+		if packageName.Name == p.OperatorPackage {
+			return packageName.Channels
+		}
+	}
+
+	return channels
+}
+
+// HeadOfChannelOrAggregateFromPackage is used to interface with the catalog image and opm APIs to return the bundle information containing the permissions
+// ctx (context.Context): is the context to pass into the list command, usually inherited from the calling command
+// returns ([]model.Bundle): an array of all bundles matching the given query parameters we want to aggregate permissions over
+// returns (error): can come from a call to opm APIs, or if the permission advisor is nil
+func (p *PermissionAdvisorStruct) HeadOfChannelOrAggregateFromPackage(ctx context.Context) ([]model.Bundle, error) {
+	var allBundles []model.Bundle
+	if p == nil {
+		return allBundles, PermissionAdvisorNilError
+	}
+	// call out to the opm libraries to list the packages
+	// and then filter this for the specified Operator package
+	actionList := action.ListPackages{
+		IndexReference: p.IndexReference,
+	}
+
+	// if there is an error in compiling the bundle action, we cannot continue
+	// a common error scene is if C_GO or -tags json1 is not passed to the
+	// go compiler and build time
+	modelPackages, err := actionList.Run(ctx)
+	if err != nil {
+		return allBundles, err
+	}
+
+	channels := p.GetChannelsForPackage(modelPackages.Packages)
+	var channel *model.Channel
+	var ok bool
+	if channel, ok = channels[p.Channel]; !ok {
+		return allBundles, errors.New(fmt.Sprintf("the specified channel %q does not exist in the catalog reference", p.Channel))
+	}
+
+	allBundles = p.GetBundlesFromChannel(channel)
+
+	return allBundles, nil
 }
 
 // GetPermissionsForAdvisor will return a list of permissions and their scopes found for the inputs
@@ -118,23 +209,10 @@ func (p *PermissionAdvisorStruct) GetPermissionsForAdvisor(ctx context.Context) 
 		return allPermissions, PermissionAdvisorNilError
 	}
 
-	// call out to the opm libraries to list the bundles with the given query filter
-	// for just the Operator package we are interested in
-	actionList := action.ListBundles{
-		IndexReference: p.IndexReference,
-		PackageName:    p.OperatorPackage,
-	}
-
-	// if there is an error in compiling the bundle action, we cannot continue
-	// a common error scene is if C_GO or -tags json1 is not passed to the
-	// go compiler and build time
-	modelBundles, err := actionList.Run(ctx)
+	bundles, err := p.HeadOfChannelOrAggregateFromPackage(ctx)
 	if err != nil {
 		return allPermissions, err
 	}
-
-	// trim the current bundle list down to the set of channels we care about
-	bundles := filterBundlesForChannel(p.Channel, modelBundles.Bundles)
 
 	for _, bundle := range bundles {
 		// trim the bundle objects from all possible kube manifests, to only the RBAC related ones
@@ -207,19 +285,6 @@ func filterObjectsInBundle(objects []string) []string {
 		kind := getKindForObjectString(obj)
 		if strings.EqualFold(kind, "ClusterRole") || strings.EqualFold(kind, "Role") {
 			filtered = append(filtered, obj)
-		}
-	}
-	return filtered
-}
-
-// filterBundlesForChannel internal util for filtering bundles not of the current channel
-// channel (string) is the name of the channel we want to inspect before a download
-// bundles ([]model.Bundle) is the list of all possible bundle candidates to inspect
-func filterBundlesForChannel(channel string, bundles []model.Bundle) []model.Bundle {
-	var filtered []model.Bundle = []model.Bundle{}
-	for _, bundle := range bundles {
-		if strings.EqualFold(bundle.Channel.Name, channel) {
-			filtered = append(filtered, bundle)
 		}
 	}
 	return filtered
