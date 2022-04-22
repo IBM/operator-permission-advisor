@@ -37,6 +37,7 @@ var (
 	roleFile        string
 	clusterRoleFile string
 	output          string
+	aggregate       bool
 )
 
 const (
@@ -154,6 +155,7 @@ func lookupPermissionsCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&roleFile, "role", "r", defaultFilePath, "location to save the aggregated role to")
 	cmd.Flags().StringVarP(&clusterRoleFile, "clusterRole", "R", defaultFilePath, "location to save the aggregated clusterRole to")
 	cmd.Flags().StringVarP(&output, "output", "k", defaultOutput, "toggle the STDOUT output format for scripting considerations")
+	cmd.Flags().BoolVarP(&aggregate, "aggregate", "a", false, "when true will aggregate all bundles in the channel instead of head only")
 
 	cmd.MarkFlagRequired("catalog")
 	cmd.MarkFlagRequired("channel")
